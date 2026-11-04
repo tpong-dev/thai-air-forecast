@@ -64,9 +64,13 @@ def test_build_cams_daily_contract_and_cache(monkeypatch: pytest.MonkeyPatch, tm
     df = cams.build_cams_daily(["bangkok", "hat_yai"], start="2022-07-01", end="2022-10-10")
     assert list(df.columns) == ["city", "date", "cams_pm25"]
     assert not df.duplicated(["city", "date"]).any()
-    assert df.groupby("city")["date"].agg(["min", "max"]).eq(
-        [pd.Timestamp("2022-07-01"), pd.Timestamp("2022-10-10")]
-    ).all().all()
+    assert (
+        df.groupby("city")["date"]
+        .agg(["min", "max"])
+        .eq([pd.Timestamp("2022-07-01"), pd.Timestamp("2022-10-10")])
+        .all()
+        .all()
+    )
     first = df.dropna().groupby("city")["date"].min()
     assert (first == pd.Timestamp("2022-08-05")).all()
     assert df.loc[(df.city == "bangkok") & (df.date == "2022-09-17"), "cams_pm25"].item() == pytest.approx(17.0)

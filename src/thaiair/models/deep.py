@@ -8,11 +8,15 @@ Design, kept deliberately small (a few thousand rows per city do not support a b
 - Each categorical column (the city) gets a 4-dim learned embedding; index 0 is reserved for
   categories not seen in training.
 - Body: two hidden layers of 64 with ReLU and dropout 0.1.
-- Output: three quantiles of the standardised log1p(y). The net predicts p50 plus two
+- Output: three quantiles of the standardised *change* log1p(y) - log1p(today's PM2.5). Predicting
+  the change from persistence instead of the level cut backtest MAE at h=1 from 6.7 to 3.6 ug/m3
+  (the level version under-forecast smog by ~4 ug/m3). The net predicts p50 plus two
   non-negative gaps (softplus), so p10 <= p50 <= p90 holds by construction, not by sorting.
 - Loss: pinball (quantile) loss averaged over the three quantiles.
-- Training: Adam, batch 256, at most ``max_epochs`` epochs, early stopping on the latest 10% of
-  rows by target date, keeping the weights of the best validation epoch. ``refit_full=True`` would
+- Training: Adam, batch 256, at most ``max_epochs`` epochs, early stopping on a seeded random 10%
+  of training *days* (all before the fold, so no leakage), keeping the weights of the best
+  validation epoch. Holding out the latest days instead put the validation set in one season
+  (often the clean rainy months) and biased the net low. ``refit_full=True`` would
   instead retrain on all rows for the best epoch count; it is off by default because, on synthetic
   data, that unselected end-of-training snapshot was consistently worse (p50 MAE ~15-20% higher)
   than the early-stopped net: epoch-to-epoch noise outweighs the extra 10% of rows.
@@ -34,7 +38,24 @@ from torch import nn
 
 from thaiair import config
 from thaiair.models.base import PRED_COLS
-from thaiair.models.registry import as_known_categories, categorical_columns, resolve_feature_cols, tail_by_target_date
+from thaiair.models.registry import as_known_categories, categorical_columns, resolve_feature_cols
+
+ANCHOR_COL = "pm25_lag0"  # today's PM2.5 (forward-filled <= 2 days), see features.py
+
+
+def random_days(target_date: pd.Series, frac: float, seed: int) -> np.ndarray:
+    """Boolean mask of a seeded random ``frac`` of whole target days, for early stopping.
+
+    Every training row is already before the fold, so this cannot leak the test period. A random
+    set of days covers all seasons; holding out only the latest days (often the clean rainy
+    season) made the net stop early on low values and under-forecast smog.
+    """
+    days = np.sort(target_date.unique())
+    if len(days) < 10:
+        return np.zeros(len(target_date), dtype=bool)
+    rng = np.random.default_rng(seed)
+    held = rng.choice(days, size=max(1, int(round(len(days) * frac))), replace=False)
+    return target_date.isin(held).to_numpy()
 
 EMBED_DIM = 4
 
@@ -139,10 +160,14 @@ class DeepQuantile:
 
         x_num, x_cat = self._inputs(train)
         y_log = np.log1p(np.clip(train["y"].to_numpy(dtype=float), 0, None))
-        self.y_mean_, self.y_scale_ = float(y_log.mean()), float(y_log.std() or 1.0)
-        y = (y_log - self.y_mean_) / self.y_scale_
+        self.anchor_fill_ = float(np.nanmean(y_log))
+        # Residual target: change from today's level (log space). The net starts from persistence
+        # and only has to learn the correction, which a small MLP does far better than the level.
+        y_res = y_log - self._anchor(train)
+        self.y_mean_, self.y_scale_ = float(y_res.mean()), float(y_res.std() or 1.0)
+        y = (y_res - self.y_mean_) / self.y_scale_
 
-        val = tail_by_target_date(train["target_date"], self.val_frac)
+        val = random_days(train["target_date"], self.val_frac, self.seed)
         if val.any() and (~val).any():
             net, self.best_epochs_ = self._train(x_num[~val], x_cat[~val], y[~val], (x_num[val], x_cat[val], y[val]))
             if self.refit_full:
@@ -162,8 +187,15 @@ class DeepQuantile:
         x_num, x_cat = self._inputs(test)
         with torch.no_grad():
             out = self._network()(torch.from_numpy(x_num), torch.from_numpy(x_cat)).numpy().astype(float)
-        out = np.expm1(out * self.y_scale_ + self.y_mean_)
+        out = np.expm1(out * self.y_scale_ + self.y_mean_ + self._anchor(test)[:, None])
         return pd.DataFrame(np.clip(out, 0, None), index=test.index, columns=PRED_COLS)
+
+    def _anchor(self, df: pd.DataFrame) -> np.ndarray:
+        """log1p of today's PM2.5 (the persistence forecast); training mean where it is unknown."""
+        if ANCHOR_COL not in df:
+            return np.full(len(df), self.anchor_fill_)
+        a = np.log1p(np.clip(df[ANCHOR_COL].to_numpy(dtype=float), 0, None))
+        return np.where(np.isnan(a), self.anchor_fill_, a)
 
     # ----------------------------------------------------------------------- pickling
 

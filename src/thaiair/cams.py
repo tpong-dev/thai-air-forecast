@@ -60,14 +60,20 @@ def fetch_cams_hourly(city_key: str, start: str | pd.Timestamp, end: str | pd.Ti
     """Hourly CAMS PM2.5 for one city, in 3-month chunks cached under data/raw/openmeteo/cams/."""
     frames = []
     for c_start, c_end in date_chunks(start, end, CHUNK_MONTHS):
-        params = {**_cams_params(city_key), "start_date": c_start.date().isoformat(), "end_date": c_end.date().isoformat()}
+        params = {
+            **_cams_params(city_key),
+            "start_date": c_start.date().isoformat(),
+            "end_date": c_end.date().isoformat(),
+        }
         cache = CAMS_CACHE / f"{city_key}_{c_start.date()}_{c_end.date()}.json"
         frames.append(hourly_frame(cached_json(AIR_QUALITY_URL, params, cache), {"pm2_5": "pm25"}))
     hourly = pd.concat(frames).sort_index()
     return hourly[~hourly.index.duplicated(keep="last")]
 
 
-def build_cams_daily(cities: Iterable[str] | None = None, start: str = CAMS_START, end: str | None = None) -> pd.DataFrame:
+def build_cams_daily(
+    cities: Iterable[str] | None = None, start: str = CAMS_START, end: str | None = None
+) -> pd.DataFrame:
     """``city, date, cams_pm25`` for every city from ``start`` to the last day with data."""
     end = end or today_bangkok().date().isoformat()
     frames = []

@@ -34,7 +34,9 @@ class FakeResponse:
 
 def hourly(days: int = 2, **cols: Any) -> pd.DataFrame:
     idx = pd.date_range("2024-01-01", periods=24 * days, freq="h", name="time")
-    return pd.DataFrame({k: (v if np.ndim(v) else np.full(len(idx), v, dtype=float)) for k, v in cols.items()}, index=idx)
+    return pd.DataFrame(
+        {k: (v if np.ndim(v) else np.full(len(idx), v, dtype=float)) for k, v in cols.items()}, index=idx
+    )
 
 
 # ---------------------------------------------------------------- wind components

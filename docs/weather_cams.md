@@ -211,6 +211,11 @@ after 30 to 60 seconds (this happened once with the slow previous-runs server).
 | Probing the APIs by hand | about 31 |
 | Live functions, tried once each on real data | 2 |
 
+In total about 330 HTTP requests. Open-Meteo counts a request with more than 10 variables or more
+than 2 weeks of data as several calls; by that rule the full first build is roughly 4,500 weighted
+calls (ERA5 ~1,450, JMA ~2,200, CAMS ~800), under the 10,000-per-day limit. It is a one-off: later
+runs reuse the cache.
+
 Half-year chunks are used for JMA because one year of 15 variables takes about 30 seconds on the
 server, and a 5-year request timed out. Daily updates after the first build need only the last
 chunk per city and file.

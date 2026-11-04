@@ -173,7 +173,9 @@ def daily_aggregate(hourly: pd.DataFrame, min_fraction: float = MIN_VALID_FRACTI
     return daily
 
 
-def date_chunks(start: str | pd.Timestamp, end: str | pd.Timestamp, months: int) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+def date_chunks(
+    start: str | pd.Timestamp, end: str | pd.Timestamp, months: int
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Split [start, end] into inclusive chunks of ``months`` calendar months, the last one clipped.
 
     Chunks always start on the same day-of-month as ``start`` so that a cached chunk keeps the same
@@ -189,7 +191,9 @@ def date_chunks(start: str | pd.Timestamp, end: str | pd.Timestamp, months: int)
     return chunks
 
 
-def complete_calendar(df: pd.DataFrame, columns: list[str], start: str | pd.Timestamp, trim_end: bool = True) -> pd.DataFrame:
+def complete_calendar(
+    df: pd.DataFrame, columns: list[str], start: str | pd.Timestamp, trim_end: bool = True
+) -> pd.DataFrame:
     """One row per (city, date) from ``start`` to the city's last date with any data, sorted.
 
     Missing days become NaN rows (the contract says "missing = NaN, not absent"); trailing days
@@ -330,14 +334,18 @@ def _with_city(daily: pd.DataFrame, city_key: str) -> pd.DataFrame:
     return out
 
 
-def build_weather_past(cities: Iterable[str] | None = None, start: str = config.DATA_START, end: str | None = None) -> pd.DataFrame:
+def build_weather_past(
+    cities: Iterable[str] | None = None, start: str = config.DATA_START, end: str | None = None
+) -> pd.DataFrame:
     """Daily ERA5 weather for every city (``city, date, w_*``)."""
     end = end or (today_bangkok() - pd.Timedelta(days=1)).date().isoformat()
     frames = [_with_city(past_daily(fetch_era5_hourly(c, start, end)), c) for c in cities or config.CITIES]
     return complete_calendar(pd.concat(frames, ignore_index=True), PAST_COLS, start)
 
 
-def build_weather_fc(cities: Iterable[str] | None = None, start: str = config.DATA_START, end: str | None = None) -> pd.DataFrame:
+def build_weather_fc(
+    cities: Iterable[str] | None = None, start: str = config.DATA_START, end: str | None = None
+) -> pd.DataFrame:
     """Daily JMA GSM issued forecasts for every city (``city, date, f1_*..f3_*``)."""
     end = end or today_bangkok().date().isoformat()
     frames = [_with_city(forecast_daily(fetch_jma_hourly(c, start, end)), c) for c in cities or config.CITIES]
