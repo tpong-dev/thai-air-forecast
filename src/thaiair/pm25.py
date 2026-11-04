@@ -74,31 +74,31 @@ STATION_COLS = ["station", "date", "pm25", "source"]
 _trust_store_ready = False
 
 
-def _use_os_trust_store() -> None:
-    """Verify Air4Thai TLS certificates with the operating system's trust store.
+AIR4THAI_INTERMEDIATES = Path(__file__).with_name("certs") / "air4thai-intermediates.pem"
 
-    WHY: the Air4Thai servers send an incomplete certificate chain (a Let's Encrypt leaf with the
-    wrong intermediates). Browsers and the Windows/macOS verifier fetch the missing intermediate, but
-    the ``certifi`` bundle used by ``requests`` cannot, so plain ``requests`` fails with
-    CERTIFICATE_VERIFY_FAILED. ``truststore`` delegates verification to the OS, which keeps TLS
-    verification on. The adapter is mounted only for ``https://air4thai.`` URLs, so other sources
-    are untouched. If ``truststore`` is unavailable nothing changes.
+
+def _use_os_trust_store() -> None:
+    """Verify Air4Thai TLS certificates, filling in the intermediates the server forgets to send.
+
+    WHY: the Air4Thai servers present a Let's Encrypt leaf (issuer "YR1") but serve an old,
+    unrelated Sectigo chain. Windows and browsers fetch the missing intermediate on their own;
+    OpenSSL on Linux (GitHub Actions, Docker) and ``certifi`` do not, so plain ``requests`` fails
+    with CERTIFICATE_VERIFY_FAILED. We ship the two public Let's Encrypt intermediates (YR1 and
+    Root YR cross-signed by ISRG Root X1, from their official AIA URLs) and add them to the normal
+    ``certifi`` bundle. Verification stays fully on and still ends at ISRG Root X1. The adapter is
+    mounted only for ``https://air4thai.`` URLs, so other sources are untouched.
     """
     global _trust_store_ready
     if _trust_store_ready:
         return
-    try:
-        import truststore  # type: ignore[import-not-found]
-    except ImportError:
-        try:
-            from pip._vendor import truststore  # type: ignore[no-redef]
-        except ImportError:
-            log.warning("truststore not available; Air4Thai HTTPS may fail certificate checks")
-            _trust_store_ready = True
-            return
+    import certifi
     from requests.adapters import HTTPAdapter
 
-    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context = ssl.create_default_context(cafile=certifi.where())
+    if AIR4THAI_INTERMEDIATES.exists():
+        context.load_verify_locations(cafile=str(AIR4THAI_INTERMEDIATES))
+    else:  # pragma: no cover - only if the package was installed without its data files
+        log.warning("missing %s; Air4Thai HTTPS may fail certificate checks", AIR4THAI_INTERMEDIATES)
 
     class _OsTrustAdapter(HTTPAdapter):
         def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
