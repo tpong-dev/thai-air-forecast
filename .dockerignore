@@ -1,0 +1,17 @@
+# Data, notes and dev tooling never go into the image. models/ and reports/ are copied in.
+data/
+.notes/
+.venv/
+.git/
+.github/
+docs/
+tests/
+notebooks/
+reports/figures/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.env
+live_forecast.json

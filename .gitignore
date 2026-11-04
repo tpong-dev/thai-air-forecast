@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.env
+
+# Raw and processed data stay local (re-downloadable; raw PCD files are not redistributed).
+data/
+!data/.gitkeep
+
+# Private learning notes (answer keys for the re-derive quiz).
+.notes/
+*.egg-info/
